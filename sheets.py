@@ -1,78 +1,70 @@
-import os
 import streamlit as st
 import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 
-# ================= CONFIG =================
+# ---------------- CONFIG ----------------
 SHEET_NAME = "Skylark_Drones"
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CREDS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/drive",
 ]
 
-# ================= AUTH =================
+# ---------------- AUTH CLIENT ----------------
 def get_gspread_client():
-    if not os.path.exists(CREDS_PATH):
-        raise FileNotFoundError("credentials.json not found")
+    if "gcp_service_account" not in st.secrets:
+        raise RuntimeError("Google service account not found in Streamlit secrets")
 
-    creds = Credentials.from_service_account_file(
-        CREDS_PATH,
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
         scopes=SCOPES
     )
     return gspread.authorize(creds)
 
-# ================= READ (CACHED) =================
+# ---------------- READ (CACHED) ----------------
 @st.cache_data(ttl=60)
-def read_sheet(sheet_name: str) -> pd.DataFrame:
-    """
-    Reads a worksheet from Google Sheets and caches the result.
-    Cache is cleared explicitly after any write operation.
-    """
+def read_sheet(sheet_name):
     client = get_gspread_client()
     sheet = client.open(SHEET_NAME).worksheet(sheet_name)
     return pd.DataFrame(sheet.get_all_records())
 
-# ================= UPDATE PILOT =================
-def update_pilot_status(pilot_name: str, new_status: str, assignment: str = "-") -> bool:
+# ---------------- UPDATE PILOT ----------------
+def update_pilot_status(pilot_name, new_status, assignment="-"):
     client = get_gspread_client()
     sheet = client.open(SHEET_NAME).worksheet("PilotRoster")
     data = sheet.get_all_values()
 
     header = data[0]
-    name_col = header.index("name") + 1
-    status_col = header.index("status") + 1
-    assignment_col = header.index("current_assignment") + 1
+    name_col = header.index("name")
+    status_col = header.index("status")
+    assignment_col = header.index("current_assignment")
 
     for i, row in enumerate(data[1:], start=2):
-        if row[name_col - 1] == pilot_name:
-            sheet.update_cell(i, status_col, new_status)
-            sheet.update_cell(i, assignment_col, assignment)
-            read_sheet.clear()  # 🔥 force fresh read
+        if row[name_col] == pilot_name:
+            sheet.update_cell(i, status_col + 1, new_status)
+            sheet.update_cell(i, assignment_col + 1, assignment)
+            read_sheet.clear()
             return True
 
     return False
 
-# ================= UPDATE DRONE =================
-def update_drone_status(drone_id: str, new_status: str, assignment: str = "-") -> bool:
+# ---------------- UPDATE DRONE ----------------
+def update_drone_status(drone_id, new_status, assignment="-"):
     client = get_gspread_client()
     sheet = client.open(SHEET_NAME).worksheet("DroneFleet")
     data = sheet.get_all_values()
 
     header = data[0]
-    id_col = header.index("drone_id") + 1
-    status_col = header.index("status") + 1
-    assignment_col = header.index("current_assignment") + 1
+    id_col = header.index("drone_id")
+    status_col = header.index("status")
+    assignment_col = header.index("current_assignment")
 
     for i, row in enumerate(data[1:], start=2):
-        if row[id_col - 1] == drone_id:
-            sheet.update_cell(i, status_col, new_status)
-            sheet.update_cell(i, assignment_col, assignment)
-            read_sheet.clear()  # 🔥 force fresh read
+        if row[id_col] == drone_id:
+            sheet.update_cell(i, status_col + 1, new_status)
+            sheet.update_cell(i, assignment_col + 1, assignment)
+            read_sheet.clear()
             return True
 
     return False
